@@ -31,6 +31,7 @@ namespace ClearBank.DeveloperTest.Services
             {
                 // could throw if calling service can do something sensible
                 // but for now...
+                // log exception
                 return MakePaymentResult.Failed;
             }
         }
