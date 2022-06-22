@@ -40,5 +40,21 @@ namespace ClearBank.DeveloperTest.Tests.Data
             Assert.IsInstanceOfType(provider.GetAccountDataStore(), typeof(BackupAccountDataStore));
         }
 
+        [TestMethod()]
+        public void Can_Get_Primary_Account_DataStore_From_String_Config()
+        {
+            var provider = new DataStoreProvider("Primary");
+
+            Assert.IsInstanceOfType(provider.GetAccountDataStore(), typeof(AccountDataStore));
+        }
+
+        [TestMethod()]
+        public void Can_Get_Backup_Account_DataStore_From_String_Config()
+        {
+            var provider = new DataStoreProvider("Backup");
+
+            Assert.IsInstanceOfType(provider.GetAccountDataStore(), typeof(BackupAccountDataStore));
+        }
+
     }
 }

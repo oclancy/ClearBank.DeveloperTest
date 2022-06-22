@@ -18,6 +18,16 @@ namespace ClearBank.DeveloperTest.Data
         }
 
         /// <summary>
+        /// Construct from enum striing type e.g. appsettings.json value
+        /// </summary>
+        /// <param name="type"></param>
+        public DataStoreProvider(string type)
+            :this( (DataStoreType)Enum.Parse(typeof(DataStoreType), type) )
+        {
+
+        }
+
+        /// <summary>
         /// Get the Accounts DataStore
         /// </summary>
         /// <returns></returns>
