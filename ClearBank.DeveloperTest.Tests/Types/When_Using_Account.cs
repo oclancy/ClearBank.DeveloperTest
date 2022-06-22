@@ -138,7 +138,7 @@ namespace ClearBank.DeveloperTest.Tests.Data
         }
 
         [TestMethod()]
-        public void Will_Not__Process_FasterPayments_Request_If_Insufficient_Balance()
+        public void Will_Not_Process_FasterPayments_Request_If_Insufficient_Balance()
         {
             var testAccount = new Account()
             {
