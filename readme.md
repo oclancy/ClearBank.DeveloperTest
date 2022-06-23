@@ -2,6 +2,6 @@
 
 ## Oliver Clancy
 
-### Requirements
-VS 2019 or VS2022
-.Net Core 3.1 
+
+- Tested on VS 2019 and VS2022
+- requires .Net Core 3.1 
