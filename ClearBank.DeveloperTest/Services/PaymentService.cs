@@ -6,27 +6,39 @@ namespace ClearBank.DeveloperTest.Services
 {
     public class PaymentService : IPaymentService
     {
-        public PaymentService(IDataStore<Account> dataStore)
-        {
-            DataStore = dataStore;
-        }
+        private readonly IPaymentValidator _paymentValidator;
+        private readonly IPaymentProcessorFactory _paymentProcessorFactory;
+        private readonly IDataStore<Account> _dataStore;
 
-        private IDataStore<Account> DataStore { get; }
+        public PaymentService(IDataStore<Account> dataStore, 
+                              IPaymentValidator paymentValidator, 
+                              IPaymentProcessorFactory paymentProcessorFactory)
+        {
+            _dataStore = dataStore;
+            _paymentValidator = paymentValidator;
+            _paymentProcessorFactory = paymentProcessorFactory;
+        }
 
         public MakePaymentResult MakePayment(MakePaymentRequest request)
         {
             if(request == null) return MakePaymentResult.Failed;
 
+#pragma warning disable CA1031 // Do not catch general exception types
             try
             {
+                if (!_dataStore.TryGet(request.DebtorAccountNumber, out var account))
+                    return MakePaymentResult.Failed;
+
                 // valid transaction type?
-                if (!DataStore.TryGet(request.DebtorAccountNumber, out var account))
+                if( !_paymentValidator.Validate(account, request.PaymentScheme))
                     return MakePaymentResult.Failed;
 
-                if (!account.ProcessPayment(request.PaymentScheme, request.Amount))
+                var paymentProcessor = _paymentProcessorFactory.GetProcessor(request.PaymentScheme);
+
+                if (!paymentProcessor.ProcessPayment(account, request.Amount))
                     return MakePaymentResult.Failed;
 
-                DataStore.Update(account);
+                _dataStore.Update(account);
                 return MakePaymentResult.Succeeded;
             }
             catch (Exception)
@@ -36,6 +48,7 @@ namespace ClearBank.DeveloperTest.Services
                 // log exception
                 return MakePaymentResult.Failed;
             }
+#pragma warning restore CA1031 // Do not catch general exception types
         }
     }
 }

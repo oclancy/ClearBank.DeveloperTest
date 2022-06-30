@@ -11,16 +11,46 @@ namespace ClearBank.DeveloperTest.Tests.Data
     [TestClass]
     public class When_Using_PaymentService
     {
-
+        private MakePaymentRequest _testRequest;
+        private Account _account;
         Mock<IDataStore<Account>> _mockDataStore;
+        Mock<IPaymentValidator> _mockValidator;
+        Mock<IPaymentProcessorFactory> _mockPaymentProcessorFactory;
+        Mock<IPaymentProcessor> _mockPaymentProcessor;
+
         private PaymentService _service;
         private string _testAccountId = "testAcc123";
 
         [TestInitialize()]
         public void TestInitialize()
         {
+            _testRequest = new MakePaymentRequest()
+            {
+                DebtorAccountNumber = _testAccountId,
+                Amount = 1,
+                PaymentScheme = PaymentScheme.Bacs
+            };
+
+            _account = new Account()
+            {
+                AllowedPaymentSchemes = AllowedPaymentSchemes.Bacs,
+                Balance = 1000,
+                Status = AccountStatus.Disabled
+            };
+
             _mockDataStore = new Mock<IDataStore<Account>>();
-            _service = new PaymentService(_mockDataStore.Object);
+            _mockPaymentProcessor = new Mock<IPaymentProcessor>();
+            _mockPaymentProcessorFactory = new Mock<IPaymentProcessorFactory>();
+            _mockValidator = new Mock<IPaymentValidator>();
+
+            //default setups
+            _mockDataStore.Setup(s => s.TryGet(_testAccountId, out _account)).Returns(true);
+            _mockPaymentProcessorFactory.Setup(f => f.GetProcessor(It.IsAny<PaymentScheme>())).Returns(_mockPaymentProcessor.Object);
+            _mockValidator.Setup(v => v.Validate(_account, It.IsAny<PaymentScheme>())).Returns(true);
+            _mockPaymentProcessor.Setup(p => p.ProcessPayment(_account, It.IsAny<decimal>())).Returns(true);
+
+            _service = new PaymentService(_mockDataStore.Object, _mockValidator.Object, _mockPaymentProcessorFactory.Object);
+
         }
         [TestCleanup()]
         public void TestCleanup()
@@ -35,153 +65,108 @@ namespace ClearBank.DeveloperTest.Tests.Data
         }
 
         [TestMethod()]
-        public void Will_Fail_MakePayment_To_Non_Exists_Account()
+        public void Can_MakePayment()
         {
-            var account = new Account();
-            Assert.AreEqual(MakePaymentResult.Failed, _service.MakePayment(new MakePaymentRequest() { }));
 
-            _mockDataStore.Verify(d => d.TryGet(It.IsAny<string>(), out account), Times.Once());
-            _mockDataStore.Verify(d => d.Update(account), Times.Never());
+            Assert.AreEqual(MakePaymentResult.Succeeded, _service.MakePayment(_testRequest));
+
+            _mockDataStore.Verify(d => d.TryGet(It.IsAny<string>(), out _account), Times.Once());
+            _mockPaymentProcessor.Verify(p => p.ProcessPayment(_account, It.IsAny<decimal>()), Times.Once());
+            _mockPaymentProcessorFactory.Verify(f => f.GetProcessor(It.IsAny<PaymentScheme>()), Times.Once());
+            _mockValidator.Verify(v=> v.Validate(_account, It.IsAny<PaymentScheme>()), Times.Once());
+            _mockDataStore.Verify(d => d.Update(_account), Times.Once());
+
         }
 
         [TestMethod()]
-        public void Can_MakePayment_To_Account_Bacs()
+        public void Will_Fail_MakePayment_To_Non_Exists_Account()
         {
-            var account = new Account()
-            {
-                AllowedPaymentSchemes = AllowedPaymentSchemes.Bacs,
-                Balance = 1000,
-                Status = AccountStatus.Disabled
-            };
+            _mockDataStore.Reset();
+            _mockDataStore.Setup(s => s.TryGet(_testAccountId, out _account)).Returns(false);
 
-            _mockDataStore.Setup(s => s.TryGet(_testAccountId, out account)).Returns(true);
-            var request = new MakePaymentRequest()
-            {
-                DebtorAccountNumber = _testAccountId,
-                Amount = 1,
-                PaymentScheme = PaymentScheme.Bacs
-            };
+            Assert.AreEqual(MakePaymentResult.Failed, _service.MakePayment(new MakePaymentRequest() { }));
 
-
-            Assert.AreEqual(MakePaymentResult.Succeeded, _service.MakePayment(request));
-
-            Assert.AreEqual(1000 - request.Amount, account.Balance);
-
-            _mockDataStore.Verify(d => d.TryGet(It.IsAny<string>(), out account), Times.Once());
-            _mockDataStore.Verify(d => d.Update(account), Times.Once());
-
+            _mockDataStore.Verify(d => d.TryGet(It.IsAny<string>(), out _account), Times.Once());
+            _mockPaymentProcessorFactory.Verify(f => f.GetProcessor(It.IsAny<PaymentScheme>()), Times.Never());
+            _mockValidator.Verify(v => v.Validate(_account, It.IsAny<PaymentScheme>()), Times.Never());
+            _mockPaymentProcessor.Verify(p => p.ProcessPayment(_account, It.IsAny<decimal>()), Times.Never());
+            _mockDataStore.Verify(d => d.Update(_account), Times.Never());
         }
+
 
         [TestMethod()]
         public void Will_Fail_MakePayment_On_Exception_Getting_Account()
         {
-            var account = new Account()
-            {
-                AllowedPaymentSchemes = AllowedPaymentSchemes.Bacs,
-                Balance = 1000,
-                Status = AccountStatus.Disabled
-            };
+            _mockDataStore.Setup(d => d.TryGet(It.IsAny<string>(), out _account)).Throws(() => new Exception());
 
-            var request = new MakePaymentRequest()
-            {
-                DebtorAccountNumber = _testAccountId,
-                Amount = 1,
-                PaymentScheme = PaymentScheme.Bacs
-            };
+            Assert.AreEqual(MakePaymentResult.Failed, _service.MakePayment(_testRequest));
 
-            _mockDataStore.Setup(d => d.TryGet(It.IsAny<string>(), out account)).Throws(() => new Exception());
+            _mockDataStore.Verify(d => d.TryGet(It.IsAny<string>(), out _account), Times.Once());
 
-            Assert.AreEqual(MakePaymentResult.Failed, _service.MakePayment(request));
-            Assert.AreEqual(1000, account.Balance);
-
-            _mockDataStore.Verify(d => d.TryGet(It.IsAny<string>(), out account), Times.Once());
-            _mockDataStore.Verify(d => d.Update(account), Times.Never());
+            _mockPaymentProcessorFactory.Verify(f => f.GetProcessor(It.IsAny<PaymentScheme>()), Times.Never());
+            _mockValidator.Verify(v => v.Validate(_account, It.IsAny<PaymentScheme>()), Times.Never());
+            _mockPaymentProcessor.Verify(p => p.ProcessPayment(_account, It.IsAny<decimal>()), Times.Never());
+            _mockDataStore.Verify(d => d.Update(_account), Times.Never());
         }
 
-        [TestMethod()]
-        public void Can_MakePayment_To_Account_Chaps()
-        {
-            var account = new Account()
-            {
-                AllowedPaymentSchemes = AllowedPaymentSchemes.Chaps,
-                Balance = 1000,
-                Status = AccountStatus.Live
-            };
-
-            _mockDataStore.Setup(s => s.TryGet(_testAccountId, out account)).Returns(true);
-            var request = new MakePaymentRequest()
-            {
-                DebtorAccountNumber = _testAccountId,
-                Amount = 1,
-                PaymentScheme = PaymentScheme.Chaps
-            };
-
-
-            Assert.AreEqual(MakePaymentResult.Succeeded, _service.MakePayment(request));
-
-            Assert.AreEqual(1000 - request.Amount, account.Balance);
-
-            _mockDataStore.Verify(d => d.TryGet(It.IsAny<string>(), out account), Times.Once());
-            _mockDataStore.Verify(d => d.Update(account), Times.Once());
-
-        }
-
-        [TestMethod()]
-        public void Can_MakePayment_To_Account_Faster_Payments()
-        {
-            var account = new Account()
-            {
-                AllowedPaymentSchemes = AllowedPaymentSchemes.FasterPayments,
-                Balance = 1000,
-                Status = AccountStatus.Disabled
-            };
-
-            _mockDataStore.Setup(s => s.TryGet(_testAccountId, out account)).Returns(true);
-            var request = new MakePaymentRequest()
-            {
-                DebtorAccountNumber = _testAccountId,
-                Amount = 1,
-                PaymentScheme = PaymentScheme.FasterPayments
-            };
-
-
-            Assert.AreEqual(MakePaymentResult.Succeeded, _service.MakePayment(request));
-
-            Assert.AreEqual(1000 - request.Amount, account.Balance);
-
-            _mockDataStore.Verify(d => d.TryGet(It.IsAny<string>(), out account), Times.Once());
-            _mockDataStore.Verify(d => d.Update(account), Times.Once());
-
-        }
 
         [TestMethod()]
         public void Will_Fail_MakePayment_On_Exception_When_Updating_Account()
         {
-            var account = new Account()
-            {
-                AllowedPaymentSchemes = AllowedPaymentSchemes.Bacs,
-                Balance = 1000,
-                Status = AccountStatus.Disabled
-            };
+            _mockDataStore.Setup(s => s.Update(_account)).Throws(() => new Exception());
 
-            _mockDataStore.Setup(s => s.TryGet(_testAccountId, out account)).Returns(true);
-            _mockDataStore.Setup(s => s.Update(account)).Throws(() => new Exception());
+            Assert.AreEqual(MakePaymentResult.Failed, _service.MakePayment(_testRequest));
 
-            var request = new MakePaymentRequest()
-            {
-                DebtorAccountNumber = _testAccountId,
-                Amount = 1,
-                PaymentScheme = PaymentScheme.Bacs
-            };
+            _mockDataStore.Verify(d => d.TryGet(It.IsAny<string>(), out _account), Times.Once());
+            _mockPaymentProcessorFactory.Verify(f => f.GetProcessor(It.IsAny<PaymentScheme>()), Times.Once());
+            _mockValidator.Verify(v => v.Validate(_account, It.IsAny<PaymentScheme>()), Times.Once());
+            _mockPaymentProcessor.Verify(p => p.ProcessPayment(_account, It.IsAny<decimal>()), Times.Once());
+            _mockDataStore.Verify(d => d.Update(_account), Times.Once());
+        }
 
+        [TestMethod()]
+        public void Will_Fail_MakePayment_On_PaymentScheme_Validation_Fail()
+        {
+            _mockValidator.Reset();
+            _mockValidator.Setup(v => v.Validate(_account, It.IsAny<PaymentScheme>())).Returns(false);
+            
+            Assert.AreEqual(MakePaymentResult.Failed, _service.MakePayment(_testRequest));
 
-            Assert.AreEqual(MakePaymentResult.Failed, _service.MakePayment(request));
+            _mockDataStore.Verify(d => d.TryGet(It.IsAny<string>(), out _account), Times.Once());
+            _mockValidator.Verify(v => v.Validate(_account, It.IsAny<PaymentScheme>()), Times.Once());
+            _mockPaymentProcessorFactory.Verify(f => f.GetProcessor(It.IsAny<PaymentScheme>()), Times.Never());
+            _mockPaymentProcessor.Verify(p => p.ProcessPayment(_account, It.IsAny<decimal>()), Times.Never());
+            _mockDataStore.Verify(d => d.Update(_account), Times.Never());
+        }
 
-            Assert.AreEqual(1000 - request.Amount, account.Balance);
+        [TestMethod()]
+        public void Will_Fail_MakePayment_On_GetPaymentProcessor_Exception()
+        {
+            _mockPaymentProcessorFactory.Reset();
+            _mockPaymentProcessorFactory.Setup(f => f.GetProcessor(It.IsAny<PaymentScheme>())).Throws(new NotImplementedException());
 
-            _mockDataStore.Verify(d => d.TryGet(It.IsAny<string>(), out account), Times.Once());
-            _mockDataStore.Verify(d => d.Update(account), Times.Once());
+            Assert.AreEqual(MakePaymentResult.Failed, _service.MakePayment(_testRequest));
 
+            _mockDataStore.Verify(d => d.TryGet(It.IsAny<string>(), out _account), Times.Once());
+ 
+            _mockValidator.Verify(v => v.Validate(_account, It.IsAny<PaymentScheme>()), Times.Once());
+            _mockPaymentProcessorFactory.Verify(f => f.GetProcessor(It.IsAny<PaymentScheme>()), Times.Once());
+            _mockPaymentProcessor.Verify(p => p.ProcessPayment(_account, It.IsAny<decimal>()), Times.Never());
+            _mockDataStore.Verify(d => d.Update(_account), Times.Never());
+        }
+
+        [TestMethod()]
+        public void Will_Fail_MakePayment_On_PaymentProcessor_Fail()
+        {
+            _mockPaymentProcessor.Setup(p => p.ProcessPayment(_account, It.IsAny<decimal>())).Returns(false);
+
+            Assert.AreEqual(MakePaymentResult.Failed, _service.MakePayment(_testRequest));
+
+            _mockDataStore.Verify(d => d.TryGet(It.IsAny<string>(), out _account), Times.Once());
+            _mockValidator.Verify(v => v.Validate(_account, It.IsAny<PaymentScheme>()), Times.Once());
+            _mockPaymentProcessorFactory.Verify(f => f.GetProcessor(It.IsAny<PaymentScheme>()), Times.Once());
+            _mockPaymentProcessor.Verify(p => p.ProcessPayment(_account, It.IsAny<decimal>()), Times.Once());
+            _mockDataStore.Verify(d => d.Update(_account), Times.Never());
         }
 
     }
