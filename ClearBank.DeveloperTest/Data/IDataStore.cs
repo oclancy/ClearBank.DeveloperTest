@@ -11,7 +11,7 @@ namespace ClearBank.DeveloperTest.Data
     /// <typeparam name="T"></typeparam>
     public interface IDataStore<T>
     {
-        bool TryGet(string Id, out T value);
+        bool TryGet(string id, out T value);
 
         void Update(T item);
     }

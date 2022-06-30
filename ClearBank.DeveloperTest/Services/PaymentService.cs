@@ -15,6 +15,8 @@ namespace ClearBank.DeveloperTest.Services
 
         public MakePaymentResult MakePayment(MakePaymentRequest request)
         {
+            if(request == null) return MakePaymentResult.Failed;
+
             try
             {
                 // valid transaction type?
